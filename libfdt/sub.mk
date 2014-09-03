@@ -1,0 +1,11 @@
+subdirs-y += include
+cflags-remove-y += -pedantic
+cflags-y += -Wno-cast-align -Wno-sign-compare -Wno-switch-default
+cflags-y += -Wno-shadow
+srcs-y += fdt.c
+srcs-y += fdt_empty_tree.c
+srcs-y += fdt_ro.c
+srcs-y += fdt_rw.c
+srcs-y += fdt_strerror.c
+srcs-y += fdt_sw.c
+srcs-y += fdt_wip.c
