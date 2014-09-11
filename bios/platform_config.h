@@ -31,7 +31,7 @@
 #define PLATFORM_LINKER_FORMAT	"elf32-littlearm"
 #define PLATFORM_LINKER_ARCH	arm
 
-#define TZ_RAM_START		0x9F800000
+#define TZ_RAM_START		0xC0000000
 
 #define BIOS_RAM_START		0x80000000
 
