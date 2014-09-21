@@ -24,40 +24,20 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
+#ifndef UART_H
+#define UART_H
 
-#ifndef PLATFORM_CONFIG_H
-#define PLATFORM_CONFIG_H
+#include <types_ext.h>
 
-#define PLATFORM_FLAVOR_ID_vexpress	0
-#define PLATFORM_FLAVOR_ID_virt		1
-#define PLATFORM_FLAVOR_IS(flav) \
-        (PLATFORM_FLAVOR == PLATFORM_FLAVOR_ID_ ## flav)
+void uart_init(vaddr_t base);
 
+void uart_putc(int ch, vaddr_t base);
 
-#define PLATFORM_LINKER_FORMAT	"elf32-littlearm"
-#define PLATFORM_LINKER_ARCH	arm
+void uart_flush_tx_fifo(vaddr_t base);
 
-#if PLATFORM_FLAVOR_IS(vexpress)
-#define TZ_RAM_START		0xC0000000
+bool uart_have_rx_data(vaddr_t base);
 
-#define BIOS_RAM_START		0x80000000
+int uart_getchar(vaddr_t base);
 
-#define UART0_BASE		0x1c090000
-#define CONSOLE_UART_BASE	UART0_BASE
+#endif /*UART_H*/
 
-#elif PLATFORM_FLAVOR_IS(virt)
-#define TZ_RAM_START		0x7DF00000
-#define TZ_RES_MEM_START	TZ_RAM_START
-#define TZ_RES_MEM_SIZE		(0x02000000 + 0x100000)
-
-#define BIOS_RAM_START		0x40000000
-
-#define UART0_BASE		0x09000000
-#define CONSOLE_UART_BASE	UART0_BASE
-
-
-#else
-#error "Unknown platform flavor"
-#endif
-
-#endif /*PLATFORM_CONFIG_H*/

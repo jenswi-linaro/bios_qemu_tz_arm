@@ -24,40 +24,40 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
+#ifndef IO_H
+#define IO_H
 
-#ifndef PLATFORM_CONFIG_H
-#define PLATFORM_CONFIG_H
+#include <stdint.h>
+#include <types_ext.h>
 
-#define PLATFORM_FLAVOR_ID_vexpress	0
-#define PLATFORM_FLAVOR_ID_virt		1
-#define PLATFORM_FLAVOR_IS(flav) \
-        (PLATFORM_FLAVOR == PLATFORM_FLAVOR_ID_ ## flav)
+static inline void write8(uint8_t val, vaddr_t addr)
+{
+	*(volatile uint8_t *)addr = val;
+}
 
+static inline void write16(uint16_t val, vaddr_t addr)
+{
+	*(volatile uint16_t *)addr = val;
+}
 
-#define PLATFORM_LINKER_FORMAT	"elf32-littlearm"
-#define PLATFORM_LINKER_ARCH	arm
+static inline void write32(uint32_t val, vaddr_t addr)
+{
+	*(volatile uint32_t *)addr = val;
+}
 
-#if PLATFORM_FLAVOR_IS(vexpress)
-#define TZ_RAM_START		0xC0000000
+static inline uint8_t read8(vaddr_t addr)
+{
+	return *(volatile uint8_t *)addr;
+}
 
-#define BIOS_RAM_START		0x80000000
+static inline uint16_t read16(vaddr_t addr)
+{
+	return *(volatile uint16_t *)addr;
+}
 
-#define UART0_BASE		0x1c090000
-#define CONSOLE_UART_BASE	UART0_BASE
+static inline uint32_t read32(vaddr_t addr)
+{
+	return *(volatile uint32_t *)addr;
+}
 
-#elif PLATFORM_FLAVOR_IS(virt)
-#define TZ_RAM_START		0x7DF00000
-#define TZ_RES_MEM_START	TZ_RAM_START
-#define TZ_RES_MEM_SIZE		(0x02000000 + 0x100000)
-
-#define BIOS_RAM_START		0x40000000
-
-#define UART0_BASE		0x09000000
-#define CONSOLE_UART_BASE	UART0_BASE
-
-
-#else
-#error "Unknown platform flavor"
-#endif
-
-#endif /*PLATFORM_CONFIG_H*/
+#endif /*IO_H*/

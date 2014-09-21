@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014, Linaro Limited
+ * Copyright (c) 2014, STMicroelectronics International N.V.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -25,39 +25,39 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef PLATFORM_CONFIG_H
-#define PLATFORM_CONFIG_H
+.global __aeabi_ldivmod
+.global __aeabi_uldivmod
 
-#define PLATFORM_FLAVOR_ID_vexpress	0
-#define PLATFORM_FLAVOR_ID_virt		1
-#define PLATFORM_FLAVOR_IS(flav) \
-        (PLATFORM_FLAVOR == PLATFORM_FLAVOR_ID_ ## flav)
+.section .text
+.balign 4
+.code  32
 
+/*
+ * __value_in_regs lldiv_t __aeabi_ldivmod( long long n, long long d)
+ */
+.func __aeabi_ldivmod
+__aeabi_ldivmod:
+	push	{ip, lr}
+	push	{r0-r3}
+	mov	r0, sp
+	ldr	lr, =__l_divmod
+        blx	lr
+	pop	{r0-r3}
+	pop	{ip, pc}
+.endfunc
 
-#define PLATFORM_LINKER_FORMAT	"elf32-littlearm"
-#define PLATFORM_LINKER_ARCH	arm
+/*
+ * __value_in_regs ulldiv_t __aeabi_uldivmod(
+ *		unsigned long long n, unsigned long long d)
+ */
+.func __aeabi_uldivmod
+__aeabi_uldivmod:
+	push	{ip, lr}
+	push	{r0-r3}
+	mov	r0, sp
+	ldr	lr, =__ul_divmod
+        blx	lr
+	pop	{r0-r3}
+	pop	{ip, pc}
 
-#if PLATFORM_FLAVOR_IS(vexpress)
-#define TZ_RAM_START		0xC0000000
-
-#define BIOS_RAM_START		0x80000000
-
-#define UART0_BASE		0x1c090000
-#define CONSOLE_UART_BASE	UART0_BASE
-
-#elif PLATFORM_FLAVOR_IS(virt)
-#define TZ_RAM_START		0x7DF00000
-#define TZ_RES_MEM_START	TZ_RAM_START
-#define TZ_RES_MEM_SIZE		(0x02000000 + 0x100000)
-
-#define BIOS_RAM_START		0x40000000
-
-#define UART0_BASE		0x09000000
-#define CONSOLE_UART_BASE	UART0_BASE
-
-
-#else
-#error "Unknown platform flavor"
-#endif
-
-#endif /*PLATFORM_CONFIG_H*/
+.endfunc

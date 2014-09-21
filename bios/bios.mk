@@ -1,5 +1,8 @@
 include bios/conf.mk
 
+cppflags += -DPLATFORM_FLAVOR=PLATFORM_FLAVOR_ID_$(PLATFORM_FLAVOR)
+cppflags += -Iinclude
+
 #
 # Do libraries
 #
@@ -11,7 +14,7 @@ libname = fdt
 libdir = libfdt
 include mk/lib.mk
 
-subdirs = bios
+subdirs = bios drivers
 include mk/subdir.mk
 include mk/compile.mk
 include bios/link.mk

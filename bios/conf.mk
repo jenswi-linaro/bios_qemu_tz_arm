@@ -2,6 +2,8 @@ CROSS_PREFIX	?= arm-linux-gnueabihf
 CROSS_COMPILE	?= $(CROSS_PREFIX)-
 include mk/gcc.mk
 
+PLATFORM_FLAVOR ?= vexpress
+
 cpuarch = cortex-a15
 cflags	 = -mcpu=$(cpuarch) -mthumb
 cflags	+= -mthumb-interwork -mlong-calls

@@ -3,6 +3,10 @@ SHELL = /bin/bash
 .PHONY: all
 all:
 
+# Make these default for now
+ARCH            ?= arm32
+arch_$(ARCH)	:= y
+
 O	?= out
 ifneq ($O,)
 out-dir := $O/
