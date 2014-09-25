@@ -17,12 +17,18 @@ link-ldadd += $(addprefix -L,$(libdirs))
 link-ldadd += $(addprefix -l,$(libnames))
 
 
-blob-objs += $(out-dir)secure_blob.o $(out-dir)nsec_blob.o $(out-dir)nsec_dtb.o
+blob-objs += $(out-dir)secure_blob.o $(out-dir)nsec_blob.o
 blob-objs += $(out-dir)nsec_rootfs.o
+cleanfiles += $(out-dir)secure_blob.bin $(out-dir)nsec_blob.bin
+cleanfiles += $(out-dir)nsec_rootfs.bin
+
+ifdef BIOS_NSEC_DTB
+blob-objs += $(out-dir)nsec_dtb.o
+cleanfiles += $(out-dir)nsec_dtb.bin
+endif
+
 objs += $(blob-objs)
 cleanfiles += $(blob-objs)
-cleanfiles += $(out-dir)secure_blob.bin $(out-dir)nsec_blob.bin
-cleanfiles += $(out-dir)nsec_dtb.bin $(out-dir)nsec_rootfs.bin
 
 ldargs-bios.elf := $(link-ldflags) $(objs) $(link-ldadd) $(libgcc)
 
@@ -63,9 +69,7 @@ $(out-dir)nsec_blob.o: $(out-dir)nsec_blob.bin FORCE
 	$(q)$(OBJCOPY) -I binary -O elf32-littlearm -B arm \
 		--rename-section .data=nsec_blob $< $@
 
-ifndef BIOS_NSEC_DTB
-$(error BIOS_NSEC_DTB not defined!)
-endif
+ifdef BIOS_NSEC_DTB
 $(out-dir)nsec_dtb.bin: $(BIOS_NSEC_DTB) FORCE
 	@echo '  LN      $@'
 	@mkdir -p $(dir $@)
@@ -76,6 +80,7 @@ $(out-dir)nsec_dtb.o: $(out-dir)nsec_dtb.bin FORCE
 	@echo '  OBJCOPY $@'
 	$(q)$(OBJCOPY) -I binary -O elf32-littlearm -B arm \
 		--rename-section .data=nsec_dtb $< $@
+endif
 
 ifndef BIOS_NSEC_ROOTFS
 $(error BIOS_NSEC_ROOTFS not defined!)

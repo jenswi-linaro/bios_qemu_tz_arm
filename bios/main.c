@@ -35,6 +35,19 @@
 #include <libfdt.h>
 #include <drivers/uart.h>
 
+#ifndef MAX
+#define MAX(a, b) \
+	(__extension__({ __typeof__(a) _a = (a); \
+			 __typeof__(b) _b = (b); \
+			 _a > _b ? _a : _b; }))
+
+#define MIN(a, b) \
+	(__extension__({ __typeof__(a) _a = (a); \
+			 __typeof__(b) _b = (b); \
+			 _a < _b ? _a : _b; }))
+#endif
+
+
 /* Round up the even multiple of size, size has to be a multiple of 2 */
 #define ROUNDUP(v, size) (((v) + (size - 1)) & ~(size - 1))
 
@@ -104,75 +117,38 @@ static const void *unreloc(const void *addr)
 	return (void *)((uint32_t)addr - (uint32_t)&__text_start);
 }
 
-static uint32_t copy_bios_image(uint32_t dst, const uint8_t *start,
-		const uint8_t *end)
+static uint32_t copy_bios_image(const char *name, uint32_t dst,
+		const uint8_t *start, const uint8_t *end)
 {
 	size_t l = (size_t)(end - start);
 
-	msg("Copy image from %p to %p\n",
-		unreloc(start), (void *)dst);
+	msg("Copy image \"%s\" from %p to %p\n",
+		name, unreloc(start), (void *)dst);
 
 	memcpy((void *)dst, unreloc(start), l);
 	return dst + l;
 }
 
-static uint32_t copy_bios_image_dtb(uint32_t dst, const uint8_t *start,
-		const uint8_t *end)
+static void *open_fdt(uint32_t dst, const uint8_t *start, const uint8_t *end)
 {
-	size_t l = ROUNDUP((size_t)(end - start), PAGE_SIZE) + PAGE_SIZE;
 	int r;
+	const void *s;
 
-	msg("Copy dtb from %p to %p\n",
-		unreloc(start), (void *)dst);
+	if (start != end) {
+		msg("Using hardcoded DTB\n");
+		CHECK((size_t)(end - start) > DTB_MAX_SIZE);
+		s = unreloc(start);
+		msg("Copy dtb from %p to %p\n", s, (void *)dst);
+	} else {
+		s = (void *)dst;
+		msg("Using QEMU provided DTB at %p\n", s);
+	}
 
-	r = fdt_open_into(unreloc(start), (void *)dst, l);
+	r = fdt_open_into(s, (void *)dst, DTB_MAX_SIZE);
 	CHECK(r < 0);
 
-	return dst + l;
+	return (void *)dst;
 }
-
-
-
-uint32_t main_init_sec(void); /* called from assembly only */
-uint32_t main_init_sec(void)
-{
-	uint32_t dst = TZ_RAM_START;
-
-	msg_init();
-
-	/* Copy secure image in place */
-	copy_bios_image(dst, &__linker_secure_blob_start,
-			&__linker_secure_blob_end);
-	return dst;
-}
-
-static void setprop_cell(void *fdt, const char *node_path,
-		const char *property, uint32_t val)
-{
-	int offs;
-	int r;
-
-	offs = fdt_path_offset(fdt, node_path);
-	CHECK(offs < 0);
-
-	r = fdt_setprop_cell(fdt, offs, property, val);
-	CHECK(r < 0);
-}
-
-static void setprop_string(void *fdt, const char *node_path,
-		const char *property, const char *string)
-{
-	int offs;
-	int r;
-
-	offs = fdt_path_offset(fdt, node_path);
-	CHECK(offs < 0);
-
-	r = fdt_setprop_string(fdt, offs, property, string);
-	CHECK(r < 0);
-}
-
-#ifdef TZ_RES_MEM_START
 
 static size_t get_cells_size(void *fdt, int offs, const char *cell_name)
 {
@@ -224,6 +200,84 @@ static void put_val(void *prop, size_t *offs, size_t cell_size,
 
 		memcpy(addr, &v, sizeof(v));
 	}
+}
+
+static void tz_res_mem_check_avail(const void *prop, size_t plen,
+			size_t addr_size, size_t len_size)
+{
+	uint64_t res_start = TZ_RES_MEM_START;
+	uint64_t res_end = res_start + TZ_RES_MEM_SIZE;
+	uint64_t last_res_start;
+	uint64_t last_res_end;
+	size_t offs;
+	uint64_t start;
+	uint64_t len;
+	uint64_t end;
+
+	msg("Checking that secure memory is available\n");
+	msg("0x%" PRIx64 " .. 0x%" PRIx64 "\n", res_start, res_end);
+	msg("Available memory\n");
+	for (offs = 0; offs < plen;) {
+		start = get_val(prop, &offs, addr_size);
+		len = get_val(prop, &offs, len_size);
+		end = start + len;
+		msg("0x%" PRIx64 " .. 0x%" PRIx64 "\n", start, end);
+	}
+
+	do {
+		last_res_start = res_start;
+		last_res_end = res_end;
+		offs = 0;
+		while (offs < plen && res_start != res_end) {
+			start = get_val(prop, &offs, addr_size);
+			len = get_val(prop, &offs, len_size);
+			end = start + len;
+
+			if (start <= res_start && end >= res_end)
+				goto mem_avail;
+
+			if (start <= res_start && end > res_start) {
+				/*
+				 * Found beginning of reserved memory in
+				 * this memory block.
+				 */
+				res_start = MIN(end, res_end);
+			} else if (end >= res_end && start < res_end) {
+				/*
+				 * Found end of of reserved memory in
+				 * this memory block.
+				 */
+				res_end = MAX(start, res_start);
+			}
+
+			/*
+			 * Here either the current memory block doesn't
+			 * cover the reserved memroy at all or we would
+			 * need to split the reserved memroy region for
+			 * book keeping. Instead we're looping through all
+			 * memory blocks trying to find of start and end of
+			 * reserved memory until everything is accounted
+			 * for. That means that we may need to loop over
+			 * the memory blocks several times.
+			 */
+
+		}
+
+		if (res_start == res_end)
+			goto mem_avail;
+
+		/*
+		 * Loop through the memory list until there's no changes in
+		 * the amount of reserved memory accounted for.
+		 */
+	} while (last_res_start != res_start || last_res_end != res_end);
+
+	msg("Can't find secure memory\n");
+	msg("0x%" PRIx64 " .. 0x%" PRIx64 "\n", res_start, res_end);
+	CHECK(1);
+
+mem_avail:
+	msg("Secure memory is available\n");
 }
 
 static void tz_res_mem_carve(const void *prop, size_t plen,
@@ -296,11 +350,7 @@ static void tz_res_mem_carve(const void *prop, size_t plen,
 
 		msg("0x%" PRIx64 " 0x%" PRIx64 "\n", start, len);
 	}
-
-
 }
-
-
 
 static void tz_res_mem(void *fdt)
 {
@@ -320,8 +370,10 @@ static void tz_res_mem(void *fdt)
 	addr_size = get_cells_size(fdt, 0, "#address-cells");
 	len_size = get_cells_size(fdt, 0, "#size-cells");
 
+	tz_res_mem_check_avail(prop, len, addr_size, len_size);
+
 	{
-		uint8_t data[len + addr_size + len_size];
+		uint8_t data[len + (addr_size + len_size) * sizeof(uint32_t)];
 		size_t dlen = sizeof(data);
 
 		tz_res_mem_carve(prop, len, addr_size, len_size, data, &dlen);
@@ -330,12 +382,129 @@ static void tz_res_mem(void *fdt)
 		CHECK(r < 0);
 	}
 }
-#else
-static void tz_res_mem(void *fdt __unused)
+
+
+#ifdef TZ_UART_SHARED
+static void tz_res_uart(void *fdt __unused)
 {
+	msg("Uart shared between secure and non-secure world\n");
+}
+#else
+
+static bool node_is_compatible(void *fdt, int offs, const char *compat)
+{
+	int plen;
+	const char *prop;
+
+	prop = fdt_getprop(fdt, offs, "compatible", &plen);
+	if (!prop)
+		return false;
+
+	while (plen > 0) {
+		size_t l;
+
+		if (strcmp(prop, compat) == 0)
+			return true;
+
+		l = strlen(prop) + 1;
+		prop += l;
+		plen -= l;
+	}
+
+	return false;
+}
+
+static bool has_reg_base(void *fdt, int offs, size_t addr_size,
+			uintptr_t base)
+{
+	int plen;
+	size_t poffs = 0;
+	const void *prop;
+	uintptr_t prop_base;
+
+	prop = fdt_getprop(fdt, offs, "reg", &plen);
+	if (!prop)
+		return false;
+
+	prop_base = get_val(prop, &poffs, addr_size);
+	return prop_base == base;
+}
+
+static void tz_res_uart(void *fdt)
+{
+	int r;
+	int offs = 0;
+	const char *name;
+	size_t addr_size;
+
+	addr_size = get_cells_size(fdt, 0, "#address-cells");
+
+	while (true) {
+		offs = fdt_next_node(fdt, offs, NULL);
+		if (offs < 0)
+			break;
+		name = fdt_get_name(fdt, offs, NULL);
+		if (!node_is_compatible(fdt, offs, "arm,pl011"))
+			continue;
+		if (!has_reg_base(fdt, offs, addr_size, UART1_BASE))
+			continue;
+		msg("Removing node \"%s\" from DTB passed to kernel\n", name);
+		r = fdt_del_node(fdt, offs);
+		CHECK(r < 0);
+		break;
+	}
 }
 #endif
 
+uint32_t main_init_sec(void); /* called from assembly only */
+uint32_t main_init_sec(void)
+{
+	uint32_t dst = TZ_RAM_START;
+	void *fdt;
+	int r;
+
+	msg_init();
+
+	/* Find DTB */
+	fdt = open_fdt(DTB_START, &__linker_nsec_dtb_start,
+			&__linker_nsec_dtb_end);
+	tz_res_mem(fdt);
+	tz_res_uart(fdt);
+	r = fdt_pack(fdt);
+	CHECK(r < 0);
+
+	/* Copy secure image in place */
+	copy_bios_image("secure blob", dst, &__linker_secure_blob_start,
+			&__linker_secure_blob_end);
+	msg("Initializing secure world\n");
+	return dst;
+}
+
+static void setprop_cell(void *fdt, const char *node_path,
+		const char *property, uint32_t val)
+{
+	int offs;
+	int r;
+
+	offs = fdt_path_offset(fdt, node_path);
+	CHECK(offs < 0);
+
+	r = fdt_setprop_cell(fdt, offs, property, val);
+	CHECK(r < 0);
+}
+
+static void setprop_string(void *fdt, const char *node_path,
+		const char *property, const char *string)
+{
+	int offs;
+	int r;
+
+	offs = fdt_path_offset(fdt, node_path);
+	CHECK(offs < 0);
+
+	r = fdt_setprop_string(fdt, offs, property, string);
+	CHECK(r < 0);
+}
 
 typedef void (*kernel_ep_func)(uint32_t a0, uint32_t a1, uint32_t a2);
 static void call_kernel(uint32_t kernel_entry, uint32_t dtb,
@@ -343,12 +512,13 @@ static void call_kernel(uint32_t kernel_entry, uint32_t dtb,
 {
 	kernel_ep_func ep = (kernel_ep_func)kernel_entry;
 	void *fdt = (void *)dtb;
-	const char cmdline[] = "console=ttyAMA0,115200 dynamic_debug.verbose=1";
+	const char cmdline[] =
+"console=ttyAMA0,115200 earlyprintk=serial,ttyAMA0,115200 dynamic_debug.verbose=1";
 	int r;
 	const uint32_t a0 = 0;
-	const uint32_t a1 = 2272; /*MACH_VEXPRESS*/
+	/*MACH_VEXPRESS see linux/arch/arm/tools/mach-types*/
+	const uint32_t a1 = 2272;
 
-	tz_res_mem(fdt);
 	setprop_cell(fdt, "/chosen", "linux,initrd-start", rootfs);
 	setprop_cell(fdt, "/chosen", "linux,initrd-end", rootfs_end);
 	setprop_string(fdt, "/chosen", "bootargs", cmdline);
@@ -361,28 +531,36 @@ static void call_kernel(uint32_t kernel_entry, uint32_t dtb,
 	ep(a0, a1, dtb);
 }
 
+static uint32_t copy_dtb(uint32_t dst, uint32_t src)
+{
+	int r;
+
+	msg("Relocating DTB for kernel use at %p\n", (void *)dst);
+	r = fdt_open_into((void *)src, (void *)dst, DTB_MAX_SIZE);
+	CHECK(r < 0);
+	return dst + DTB_MAX_SIZE;
+}
+
 void main_init_ns(void); /* called from assembly only */
 void main_init_ns(void)
 {
 	uint32_t dst;
 	/* 32MiB above beginning of RAM */
-	uint32_t kernel_entry = BIOS_RAM_START + 32 * 1024 * 1024;
+	uint32_t kernel_entry = DRAM_START + 32 * 1024 * 1024;
 	uint32_t dtb;
 	uint32_t rootfs;
 	uint32_t rootfs_end;
 
 	/* Copy non-secure image in place */
-	dst = copy_bios_image(kernel_entry, &__linker_nsec_blob_start,
+	dst = copy_bios_image("kernel", kernel_entry, &__linker_nsec_blob_start,
 			&__linker_nsec_blob_end);
 
 	dtb = ROUNDUP(dst, PAGE_SIZE) + 96 * 1024 * 1024; /* safe spot */
-	dst = copy_bios_image_dtb(dtb, &__linker_nsec_dtb_start,
-			&__linker_nsec_dtb_end);
+	dst = copy_dtb(dtb, DTB_START);
 
-	rootfs = ROUNDUP(dst, PAGE_SIZE);
-	rootfs_end = copy_bios_image(rootfs, &__linker_nsec_rootfs_start,
-				     &__linker_nsec_rootfs_end);
+	rootfs = ROUNDUP(dst + DTB_MAX_SIZE, PAGE_SIZE);
+	rootfs_end = copy_bios_image("rootfs", rootfs,
+			&__linker_nsec_rootfs_start, &__linker_nsec_rootfs_end);
 
 	call_kernel(kernel_entry, dtb, rootfs, rootfs_end);
 }
-
