@@ -456,12 +456,39 @@ static void tz_res_uart(void *fdt)
 }
 #endif
 
-uint32_t main_init_sec(void); /* called from assembly only */
-uint32_t main_init_sec(void)
+#define OPTEE_MAGIC		0x4554504f
+#define OPTEE_VERSION		1
+#define OPTEE_ARCH_ARM32	0
+#define OPTEE_ARCH_ARM64	1
+
+
+struct optee_header {
+	uint32_t magic;
+	uint8_t version;
+	uint8_t arch;
+	uint16_t flags;
+	uint32_t init_size;
+	uint32_t init_load_addr_hi;
+	uint32_t init_load_addr_lo;
+	uint32_t init_mem_usage;
+	uint32_t paged_size;
+};
+
+
+struct sec_entry_arg {
+	uint32_t entry;
+	uint32_t paged_part;
+};
+/* called from assembly only */
+void main_init_sec(struct sec_entry_arg *arg);
+void main_init_sec(struct sec_entry_arg *arg)
 {
 	uint32_t dst = TZ_RAM_START;
 	void *fdt;
 	int r;
+	const uint8_t *sblob_start = &__linker_secure_blob_start;
+	const uint8_t *sblob_end = &__linker_secure_blob_end;
+	struct optee_header hdr;
 
 	msg_init();
 
@@ -473,11 +500,30 @@ uint32_t main_init_sec(void)
 	r = fdt_pack(fdt);
 	CHECK(r < 0);
 
+	arg->paged_part = 0;
+	arg->entry = dst;
+
+	/* Look for a header first */
+	if (((intptr_t)sblob_end - (intptr_t)sblob_start) >=
+			(ssize_t)sizeof(hdr)) {
+		copy_bios_image("secure header", (uint32_t)&hdr, sblob_start,
+				sblob_start + sizeof(hdr));
+
+		if (hdr.magic == OPTEE_MAGIC && hdr.version == OPTEE_VERSION) {
+			msg("found secure header\n");
+			sblob_start += sizeof(hdr);
+			CHECK(hdr.init_load_addr_hi != 0);
+			CHECK(hdr.init_load_addr_lo != dst);
+
+			arg->paged_part = (uint32_t)unreloc(sblob_start) +
+					  hdr.init_size;
+			arg->entry = hdr.init_load_addr_lo;
+		}
+	}
+
 	/* Copy secure image in place */
-	copy_bios_image("secure blob", dst, &__linker_secure_blob_start,
-			&__linker_secure_blob_end);
+	copy_bios_image("secure blob", dst, sblob_start, sblob_end);
 	msg("Initializing secure world\n");
-	return dst;
 }
 
 static void setprop_cell(void *fdt, const char *node_path,
