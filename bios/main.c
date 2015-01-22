@@ -510,13 +510,23 @@ void main_init_sec(struct sec_entry_arg *arg)
 				sblob_start + sizeof(hdr));
 
 		if (hdr.magic == OPTEE_MAGIC && hdr.version == OPTEE_VERSION) {
+			size_t pg_part_size;
+			uint32_t pg_part_dst;
+
 			msg("found secure header\n");
 			sblob_start += sizeof(hdr);
 			CHECK(hdr.init_load_addr_hi != 0);
 			CHECK(hdr.init_load_addr_lo != dst);
 
-			arg->paged_part = (uint32_t)unreloc(sblob_start) +
-					  hdr.init_size;
+			pg_part_size = sblob_end - sblob_start - hdr.init_size;
+			pg_part_dst = (size_t)TZ_RES_MEM_START +
+					TZ_RES_MEM_SIZE - pg_part_size;
+
+			copy_bios_image("secure paged part", pg_part_dst,
+				sblob_start + hdr.init_size, sblob_end);
+
+			sblob_end -= pg_part_size;
+			arg->paged_part = pg_part_dst;
 			arg->entry = hdr.init_load_addr_lo;
 		}
 	}
