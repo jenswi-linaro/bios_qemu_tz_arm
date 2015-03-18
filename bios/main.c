@@ -456,6 +456,21 @@ static void tz_res_uart(void *fdt)
 }
 #endif
 
+static void tz_add_optee_node(void *fdt)
+{
+	int offs;
+	int ret;
+
+	offs = fdt_path_offset(fdt, "/");
+	CHECK(offs < 0);
+	offs = fdt_add_subnode(fdt, offs, "firmware");
+	CHECK(offs < 0);
+	offs = fdt_add_subnode(fdt, offs, "optee");
+	CHECK(offs < 0);
+	ret = fdt_setprop_string(fdt, offs, "compatible", "linaro,optee-tz");
+	CHECK(ret < 0);
+}
+
 #define OPTEE_MAGIC		0x4554504f
 #define OPTEE_VERSION		1
 #define OPTEE_ARCH_ARM32	0
@@ -497,6 +512,7 @@ void main_init_sec(struct sec_entry_arg *arg)
 			&__linker_nsec_dtb_end);
 	tz_res_mem(fdt);
 	tz_res_uart(fdt);
+	tz_add_optee_node(fdt);
 	r = fdt_pack(fdt);
 	CHECK(r < 0);
 
