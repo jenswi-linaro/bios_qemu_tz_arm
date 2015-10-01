@@ -469,6 +469,8 @@ static void tz_add_optee_node(void *fdt)
 	CHECK(offs < 0);
 	ret = fdt_setprop_string(fdt, offs, "compatible", "linaro,optee-tz");
 	CHECK(ret < 0);
+	ret = fdt_setprop_string(fdt, offs, "method", "smc");
+	CHECK(ret < 0);
 }
 
 #define OPTEE_MAGIC		0x4554504f
