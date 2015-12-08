@@ -463,9 +463,11 @@ static void tz_add_optee_node(void *fdt)
 
 	offs = fdt_path_offset(fdt, "/");
 	CHECK(offs < 0);
+	offs = fdt_add_subnode(fdt, offs, "firmware");
+	CHECK(offs < 0);
 	offs = fdt_add_subnode(fdt, offs, "optee");
 	CHECK(offs < 0);
-	ret = fdt_setprop_string(fdt, offs, "compatible", "optee,optee-tz");
+	ret = fdt_setprop_string(fdt, offs, "compatible", "linaro,optee-tz");
 	CHECK(ret < 0);
 	ret = fdt_setprop_string(fdt, offs, "method", "smc");
 	CHECK(ret < 0);
