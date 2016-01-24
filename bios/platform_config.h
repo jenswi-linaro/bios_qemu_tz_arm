@@ -53,7 +53,7 @@
 #define DRAM_START		0x40000000
 
 #define UART0_BASE		0x09000000
-#define UART1_BASE		0x09010000
+#define UART1_BASE		0x09040000
 
 
 #else
