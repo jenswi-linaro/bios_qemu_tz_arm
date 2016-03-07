@@ -53,6 +53,11 @@
 
 #define PAGE_SIZE	4096
 
+static uint32_t kernel_entry;
+static uint32_t dtb_addr;
+static uint32_t rootfs_start;
+static uint32_t rootfs_end;
+
 extern const uint8_t __text_start;
 extern const uint8_t __linker_secure_blob_start;
 extern const uint8_t __linker_secure_blob_end;
@@ -473,6 +478,35 @@ static void tz_add_optee_node(void *fdt)
 	CHECK(ret < 0);
 }
 
+static uint32_t copy_dtb(uint32_t dst, uint32_t src)
+{
+	int r;
+
+	msg("Relocating DTB for kernel use at %p\n", (void *)dst);
+	r = fdt_open_into((void *)src, (void *)dst, DTB_MAX_SIZE);
+	CHECK(r < 0);
+	return dst + DTB_MAX_SIZE;
+}
+
+static void copy_ns_images(void)
+{
+	uint32_t dst;
+
+	/* 32MiB above beginning of RAM */
+	kernel_entry = DRAM_START + 32 * 1024 * 1024;
+
+	/* Copy non-secure image in place */
+	dst = copy_bios_image("kernel", kernel_entry, &__linker_nsec_blob_start,
+			&__linker_nsec_blob_end);
+
+	dtb_addr = ROUNDUP(dst, PAGE_SIZE) + 96 * 1024 * 1024; /* safe spot */
+	dst = copy_dtb(dtb_addr, DTB_START);
+
+	rootfs_start = ROUNDUP(dst + DTB_MAX_SIZE, PAGE_SIZE);
+	rootfs_end = copy_bios_image("rootfs", rootfs_start,
+			&__linker_nsec_rootfs_start, &__linker_nsec_rootfs_end);
+}
+
 #define OPTEE_MAGIC		0x4554504f
 #define OPTEE_VERSION		1
 #define OPTEE_ARCH_ARM32	0
@@ -551,6 +585,13 @@ void main_init_sec(struct sec_entry_arg *arg)
 
 	/* Copy secure image in place */
 	copy_bios_image("secure blob", dst, sblob_start, sblob_end);
+
+	/*
+	 * Copy NS images as while we can read the secure flash from where
+	 * we load them.
+	 */
+	copy_ns_images();
+
 	msg("Initializing secure world\n");
 }
 
@@ -581,10 +622,10 @@ static void setprop_string(void *fdt, const char *node_path,
 }
 
 typedef void (*kernel_ep_func)(uint32_t a0, uint32_t a1, uint32_t a2);
-static void call_kernel(uint32_t kernel_entry, uint32_t dtb,
-		uint32_t rootfs, uint32_t rootfs_end)
+static void call_kernel(uint32_t entry, uint32_t dtb,
+		uint32_t initrd, uint32_t initrd_end)
 {
-	kernel_ep_func ep = (kernel_ep_func)kernel_entry;
+	kernel_ep_func ep = (kernel_ep_func)entry;
 	void *fdt = (void *)dtb;
 	const char cmdline[] =
 "console=ttyAMA0,115200 earlyprintk=serial,ttyAMA0,115200 dynamic_debug.verbose=1";
@@ -593,8 +634,8 @@ static void call_kernel(uint32_t kernel_entry, uint32_t dtb,
 	/*MACH_VEXPRESS see linux/arch/arm/tools/mach-types*/
 	const uint32_t a1 = 2272;
 
-	setprop_cell(fdt, "/chosen", "linux,initrd-start", rootfs);
-	setprop_cell(fdt, "/chosen", "linux,initrd-end", rootfs_end);
+	setprop_cell(fdt, "/chosen", "linux,initrd-start", initrd);
+	setprop_cell(fdt, "/chosen", "linux,initrd-end", initrd_end);
 	setprop_string(fdt, "/chosen", "bootargs", cmdline);
 	r = fdt_pack(fdt);
 	CHECK(r < 0);
@@ -605,36 +646,8 @@ static void call_kernel(uint32_t kernel_entry, uint32_t dtb,
 	ep(a0, a1, dtb);
 }
 
-static uint32_t copy_dtb(uint32_t dst, uint32_t src)
-{
-	int r;
-
-	msg("Relocating DTB for kernel use at %p\n", (void *)dst);
-	r = fdt_open_into((void *)src, (void *)dst, DTB_MAX_SIZE);
-	CHECK(r < 0);
-	return dst + DTB_MAX_SIZE;
-}
-
 void main_init_ns(void); /* called from assembly only */
 void main_init_ns(void)
 {
-	uint32_t dst;
-	/* 32MiB above beginning of RAM */
-	uint32_t kernel_entry = DRAM_START + 32 * 1024 * 1024;
-	uint32_t dtb;
-	uint32_t rootfs;
-	uint32_t rootfs_end;
-
-	/* Copy non-secure image in place */
-	dst = copy_bios_image("kernel", kernel_entry, &__linker_nsec_blob_start,
-			&__linker_nsec_blob_end);
-
-	dtb = ROUNDUP(dst, PAGE_SIZE) + 96 * 1024 * 1024; /* safe spot */
-	dst = copy_dtb(dtb, DTB_START);
-
-	rootfs = ROUNDUP(dst + DTB_MAX_SIZE, PAGE_SIZE);
-	rootfs_end = copy_bios_image("rootfs", rootfs,
-			&__linker_nsec_rootfs_start, &__linker_nsec_rootfs_end);
-
-	call_kernel(kernel_entry, dtb, rootfs, rootfs_end);
+	call_kernel(kernel_entry, dtb_addr, rootfs_start, rootfs_end);
 }
