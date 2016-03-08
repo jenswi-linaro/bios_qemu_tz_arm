@@ -127,8 +127,8 @@ static uint32_t copy_bios_image(const char *name, uint32_t dst,
 {
 	size_t l = (size_t)(end - start);
 
-	msg("Copy image \"%s\" from %p to %p\n",
-		name, unreloc(start), (void *)dst);
+	msg("Copy image \"%s\" size %#zx, from %p to %p\n",
+		name, l, unreloc(start), (void *)dst);
 
 	memcpy((void *)dst, unreloc(start), l);
 	return dst + l;
@@ -534,12 +534,13 @@ struct sec_entry_arg {
 void main_init_sec(struct sec_entry_arg *arg);
 void main_init_sec(struct sec_entry_arg *arg)
 {
-	uint32_t dst = TZ_RAM_START;
 	void *fdt;
 	int r;
 	const uint8_t *sblob_start = &__linker_secure_blob_start;
 	const uint8_t *sblob_end = &__linker_secure_blob_end;
 	struct optee_header hdr;
+	size_t pg_part_size;
+	uint32_t pg_part_dst;
 
 	msg_init();
 
@@ -552,39 +553,32 @@ void main_init_sec(struct sec_entry_arg *arg)
 	r = fdt_pack(fdt);
 	CHECK(r < 0);
 
-	arg->paged_part = 0;
-	arg->entry = dst;
-
 	/* Look for a header first */
-	if (((intptr_t)sblob_end - (intptr_t)sblob_start) >=
-			(ssize_t)sizeof(hdr)) {
-		copy_bios_image("secure header", (uint32_t)&hdr, sblob_start,
-				sblob_start + sizeof(hdr));
+	CHECK(((intptr_t)sblob_end - (intptr_t)sblob_start) <
+		(ssize_t)sizeof(hdr));
+	copy_bios_image("secure header", (uint32_t)&hdr, sblob_start,
+			sblob_start + sizeof(hdr));
 
-		if (hdr.magic == OPTEE_MAGIC && hdr.version == OPTEE_VERSION) {
-			size_t pg_part_size;
-			uint32_t pg_part_dst;
+	CHECK(hdr.magic != OPTEE_MAGIC || hdr.version != OPTEE_VERSION);
 
-			msg("found secure header\n");
-			sblob_start += sizeof(hdr);
-			CHECK(hdr.init_load_addr_hi != 0);
-			CHECK(hdr.init_load_addr_lo != dst);
+	msg("found secure header\n");
+	sblob_start += sizeof(hdr);
+	CHECK(hdr.init_load_addr_hi != 0);
 
-			pg_part_size = sblob_end - sblob_start - hdr.init_size;
-			pg_part_dst = (size_t)TZ_RES_MEM_START +
-					TZ_RES_MEM_SIZE - pg_part_size;
+	pg_part_size = sblob_end - sblob_start - hdr.init_size;
+	pg_part_dst = (size_t)TZ_RES_MEM_START + TZ_RES_MEM_SIZE - pg_part_size;
 
-			copy_bios_image("secure paged part", pg_part_dst,
-				sblob_start + hdr.init_size, sblob_end);
+	copy_bios_image("secure paged part",
+			pg_part_dst, sblob_start + hdr.init_size, sblob_end);
 
-			sblob_end -= pg_part_size;
-			arg->paged_part = pg_part_dst;
-			arg->entry = hdr.init_load_addr_lo;
-		}
-	}
+	sblob_end -= pg_part_size;
+
+	arg->paged_part = pg_part_dst;
+	arg->entry = hdr.init_load_addr_lo;
 
 	/* Copy secure image in place */
-	copy_bios_image("secure blob", dst, sblob_start, sblob_end);
+	copy_bios_image("secure blob", hdr.init_load_addr_lo, sblob_start,
+			sblob_end);
 
 	/*
 	 * Copy NS images as while we can read the secure flash from where
