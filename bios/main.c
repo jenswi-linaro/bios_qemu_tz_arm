@@ -621,8 +621,7 @@ static void call_kernel(uint32_t entry, uint32_t dtb,
 {
 	kernel_ep_func ep = (kernel_ep_func)entry;
 	void *fdt = (void *)dtb;
-	const char cmdline[] =
-"console=ttyAMA0,115200 earlyprintk=serial,ttyAMA0,115200 dynamic_debug.verbose=1";
+	const char cmdline[] = COMMAND_LINE;
 	int r;
 	const uint32_t a0 = 0;
 	/*MACH_VEXPRESS see linux/arch/arm/tools/mach-types*/

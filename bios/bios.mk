@@ -2,6 +2,7 @@ include bios/conf.mk
 
 cppflags += -DPLATFORM_FLAVOR=PLATFORM_FLAVOR_ID_$(PLATFORM_FLAVOR)
 cppflags += -Iinclude
+cppflags += -DCOMMAND_LINE="\"$(BIOS_COMMAND_LINE)\""
 
 #
 # Do libraries

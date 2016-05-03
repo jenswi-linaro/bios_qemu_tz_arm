@@ -4,6 +4,11 @@ include mk/gcc.mk
 
 PLATFORM_FLAVOR ?= vexpress
 
+BIOS_COMMAND_LINE = console=ttyAMA0,115200 \
+		    earlyprintk=serial,ttyAMA0,115200 \
+		    dynamic_debug.verbose=1 \
+		    $(BIOS_ROOT_DEVICE)
+
 cpuarch = cortex-a15
 cflags	 = -mcpu=$(cpuarch) -mthumb
 cflags	+= -mthumb-interwork -mlong-calls
