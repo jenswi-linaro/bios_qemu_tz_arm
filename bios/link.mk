@@ -84,12 +84,19 @@ endif
 
 ifndef BIOS_NSEC_ROOTFS
 $(error BIOS_NSEC_ROOTFS not defined!)
-endif
+else ifeq ($(BIOS_NSEC_ROOTFS),/dev/null)
+$(out-dir)nsec_rootfs.bin: FORCE
+	@echo '  MAKE    $@'
+	@mkdir -p $(dir $@)
+	@rm -f $@
+	$(q) echo 'Empty' > $@
+else
 $(out-dir)nsec_rootfs.bin: $(BIOS_NSEC_ROOTFS) FORCE
 	@echo '  LN      $@'
 	@mkdir -p $(dir $@)
 	@rm -f $@
 	$(q)ln -s $(abspath $<) $@
+endif
 
 $(out-dir)nsec_rootfs.o: $(out-dir)nsec_rootfs.bin FORCE
 	@echo '  OBJCOPY $@'
