@@ -83,11 +83,11 @@ new_loc:
 	ldr	ip, =main_stack_top;
 	ldr	sp, [ip]
 
-	push	{r0, r1}
+	push	{r0, r1, r2}
 	mov	r0, sp
 	ldr	ip, =main_init_sec
 	blx	ip
-	pop	{r0, r1}
+	pop	{r0, r1, r2}
 	mov	ip, r0	/* entry address */
 	mov	r0, r1	/* argument (address of pagable part if != 0) */
 	blx	ip

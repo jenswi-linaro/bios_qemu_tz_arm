@@ -529,6 +529,7 @@ struct optee_header {
 struct sec_entry_arg {
 	uint32_t entry;
 	uint32_t paged_part;
+	uint32_t fdt;
 };
 /* called from assembly only */
 void main_init_sec(struct sec_entry_arg *arg);
@@ -585,6 +586,7 @@ void main_init_sec(struct sec_entry_arg *arg)
 	 * we load them.
 	 */
 	copy_ns_images();
+	arg->fdt = dtb_addr;
 
 	msg("Initializing secure world\n");
 }
@@ -627,6 +629,8 @@ static void call_kernel(uint32_t entry, uint32_t dtb,
 	/*MACH_VEXPRESS see linux/arch/arm/tools/mach-types*/
 	const uint32_t a1 = 2272;
 
+	r = fdt_open_into(fdt, fdt, DTB_MAX_SIZE);
+	CHECK(r < 0);
 	setprop_cell(fdt, "/chosen", "linux,initrd-start", initrd);
 	setprop_cell(fdt, "/chosen", "linux,initrd-end", initrd_end);
 	setprop_string(fdt, "/chosen", "bootargs", cmdline);
